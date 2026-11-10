@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import signal
 import sys
+import threading
+import time
 from typing import Any
 
 from psycopg import sql
 
-from . import analyzer, db, llama
+from . import analyzer, control, db, llama
 from .config import Config
 from .immich import ImmichClient
 
@@ -124,6 +127,7 @@ def cmd_describe(cfg: Config, limit: int) -> int:
                     (description, cfg.describe_model, asset_id),
                 )
                 conn.commit()
+                control.touch_worker(conn)
                 described += 1
             else:
                 error = str(record.get("error") or description or status)[:2000]
@@ -139,6 +143,7 @@ def cmd_describe(cfg: Config, limit: int) -> int:
                     (error, asset_id),
                 )
                 conn.commit()
+                control.touch_worker(conn)
                 failed += 1
             if (described + failed) % 20 == 0:
                 print(f"  described={described} failed={failed}")
@@ -204,6 +209,7 @@ def cmd_embed(cfg: Config, limit: int, batch_size: int) -> int:
                     (db.vector_literal(vector), cfg.llama_model, row["asset_id"]),
                 )
             conn.commit()
+            control.touch_worker(conn)
             embedded += len(group)
             print(f"  embedded={embedded}/{len(rows)}")
 
@@ -274,6 +280,72 @@ def cmd_run(cfg: Config, chunk: int, sync_limit: int | None, max_rounds: int) ->
     return 0
 
 
+def cmd_worker(
+    cfg: Config, batch: int, embed_batch: int, sync_interval: int
+) -> int:
+    """Long-running describe/embed loop controlled by ``omni.control``."""
+    stop = False
+
+    def _stop(signum: int, _frame: object) -> None:
+        nonlocal stop
+        stop = True
+        print(f"signal {signum} received, stopping after the current batch", flush=True)
+
+    signal.signal(signal.SIGTERM, _stop)
+    signal.signal(signal.SIGINT, _stop)
+
+    with db.connect(cfg) as conn:
+        control.ensure_control(conn)
+
+    heartbeat_stop = threading.Event()
+
+    def _heartbeat() -> None:
+        while not heartbeat_stop.wait(15):
+            try:
+                with db.connect(cfg) as conn:
+                    control.touch_worker(conn)
+            except Exception:  # noqa: BLE001 - heartbeat must never kill the loop
+                pass
+
+    threading.Thread(target=_heartbeat, daemon=True).start()
+
+    print(
+        f"worker started: batch={batch} embed_batch={embed_batch} "
+        f"concurrency={cfg.max_concurrent} sync_interval={sync_interval}s",
+        flush=True,
+    )
+    last_sync = 0.0
+    while not stop:
+        try:
+            with db.connect(cfg) as conn:
+                control.touch_worker(conn)
+                paused = control.is_paused(conn)
+            if paused:
+                time.sleep(3)
+                continue
+            if sync_interval > 0 and time.time() - last_sync >= sync_interval:
+                cmd_sync(cfg)
+                last_sync = time.time()
+                continue
+            described = cmd_describe(cfg, batch)
+            cmd_embed(cfg, embed_batch, batch_size=8)
+            if described == 0:
+                time.sleep(5)
+        except Exception as error:  # noqa: BLE001 - keep the worker alive
+            print(f"worker iteration failed: {error}", flush=True)
+            time.sleep(10)
+    heartbeat_stop.set()
+    print("worker stopped", flush=True)
+    return 0
+
+
+def cmd_web(cfg: Config) -> int:
+    from .web import serve
+
+    serve(cfg)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="immich-omni",
@@ -305,7 +377,15 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--sync-limit", type=int, default=None)
     run.add_argument("--max-rounds", type=int, default=1000)
 
+    worker = sub.add_parser("worker", help="run the resumable describe/embed loop")
+    worker.add_argument("--batch", type=int, default=16)
+    worker.add_argument("--embed-batch", type=int, default=32)
+    worker.add_argument("--sync-interval", type=int, default=1800)
+
+    sub.add_parser("web", help="serve the progress and pause/resume UI")
+
     return parser
+
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -329,6 +409,10 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_status(cfg)
         if args.command == "run":
             return cmd_run(cfg, args.chunk, args.sync_limit, args.max_rounds)
+        if args.command == "worker":
+            return cmd_worker(cfg, args.batch, args.embed_batch, args.sync_interval)
+        if args.command == "web":
+            return cmd_web(cfg)
     except KeyboardInterrupt:
         print("\ninterrupted; progress is committed, rerun the same command to continue")
         return 130

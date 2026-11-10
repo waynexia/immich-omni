@@ -1,13 +1,16 @@
 SHELL := /bin/bash
 COMPOSE := docker compose
 
-.PHONY: help build download llama up down init sync describe embed search status run
+.PHONY: help build download llama up down init sync describe embed search status run worker web logs
 
 help:
 	@echo "make build     build the pipeline image (needs BUILD_HTTP_PROXY)"
 	@echo "make download  download Qwen3-Embedding-8B Q8_0 (resumable)"
 	@echo "make llama     build llama-server on the host and the runtime image"
-	@echo "make up        start llama.cpp embedding server"
+	@echo "make up        start llama.cpp, gateway, worker and web UI"
+	@echo "make worker    start only the long-running worker"
+	@echo "make web       start only the progress UI (port 10313)"
+	@echo "make logs      follow worker logs"
 	@echo "make init      create role/schema/tables in the Immich Postgres"
 	@echo "make sync      mirror asset metadata from the Immich API"
 	@echo "make describe  generate descriptions for pending assets"
@@ -27,7 +30,16 @@ llama:
 	$(COMPOSE) build llama-embed
 
 up:
-	$(COMPOSE) up -d llama-embed model-gateway
+	$(COMPOSE) up -d llama-embed model-gateway worker web
+
+worker:
+	$(COMPOSE) up -d worker
+
+web:
+	$(COMPOSE) up -d web
+
+logs:
+	$(COMPOSE) logs -f worker
 
 down:
 	$(COMPOSE) down

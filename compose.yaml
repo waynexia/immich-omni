@@ -1,5 +1,30 @@
 name: immich-omni
 
+x-pipeline: &pipeline
+  build:
+    context: .
+    dockerfile: docker/pipeline/Dockerfile
+    network: host
+    args:
+      HTTP_PROXY: ${BUILD_HTTP_PROXY:-}
+      HTTPS_PROXY: ${BUILD_HTTP_PROXY:-}
+  image: immich-omni/pipeline:local
+  env_file:
+    - .env
+  extra_hosts:
+    # Docker bridge containers cannot route to Tailscale; model-gateway
+    # forwards the TLS endpoint through the host network namespace.
+    - "${DESCRIBE_HOST_NAME:-mbp-dpsk.tailc4cf9.ts.net}:host-gateway"
+  volumes:
+    - ./models:/models:ro
+    - ./work:/work
+  networks:
+    - omni
+    - immich
+  depends_on:
+    - llama-embed
+    - model-gateway
+
 services:
   # Local embedding server: Qwen3-Embedding-8B Q8_0 on ROCm.
   llama-embed:
@@ -38,32 +63,27 @@ services:
     networks:
       - omni
 
-  # One-shot worker. Every command is idempotent and resumable.
+  # One-shot worker for manual commands (sync/describe/embed/search/status).
   pipeline:
-    build:
-      context: .
-      dockerfile: docker/pipeline/Dockerfile
-      network: host
-      args:
-        HTTP_PROXY: ${BUILD_HTTP_PROXY:-}
-        HTTPS_PROXY: ${BUILD_HTTP_PROXY:-}
-    image: immich-omni/pipeline:local
+    <<: *pipeline
     container_name: immich_omni_pipeline
-    env_file:
-      - .env
-    extra_hosts:
-      # Docker bridge containers cannot route to Tailscale; model-gateway
-      # forwards the TLS endpoint through the host network namespace.
-      - "${DESCRIBE_HOST_NAME:-mbp-dpsk.tailc4cf9.ts.net}:host-gateway"
-    volumes:
-      - ./models:/models:ro
-      - ./work:/work
-    networks:
-      - omni
-      - immich
-    depends_on:
-      - llama-embed
-      - model-gateway
+
+  # Long-running describe/embed loop, pause/resume via the web UI.
+  worker:
+    <<: *pipeline
+    container_name: immich_omni_worker
+    command: ["worker", "--batch", "16"]
+    restart: unless-stopped
+    stop_grace_period: 5m
+
+  # Progress / pause / ETA UI.
+  web:
+    <<: *pipeline
+    container_name: immich_omni_web
+    command: ["web"]
+    restart: unless-stopped
+    ports:
+      - "10313:8090"
 
   # TCP forwarder from the Docker bridge to the Tailscale-only vision model.
   # TLS/SNI is preserved because clients still use the original hostname.

@@ -29,3 +29,13 @@ CREATE INDEX IF NOT EXISTS assets_status_idx ON omni.assets (status);
 CREATE INDEX IF NOT EXISTS assets_embedding_hnsw
     ON omni.assets USING hnsw (embedding public.vector_cosine_ops)
     WHERE embedding IS NOT NULL;
+
+-- Single-row worker control, toggled by the web UI.
+CREATE TABLE IF NOT EXISTS omni.control (
+    id              boolean PRIMARY KEY DEFAULT true CHECK (id),
+    paused          boolean NOT NULL DEFAULT false,
+    worker_seen_at  timestamptz,
+    updated_at      timestamptz NOT NULL DEFAULT now()
+);
+
+INSERT INTO omni.control (id) VALUES (true) ON CONFLICT DO NOTHING;
