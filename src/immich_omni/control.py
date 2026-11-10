@@ -39,14 +39,8 @@ def snapshot(conn: psycopg.Connection) -> dict[str, Any]:
             count(*) FILTER (WHERE status = 'described')  AS described,
             count(*) FILTER (WHERE status = 'embedded')   AS embedded,
             count(*) FILTER (WHERE status = 'failed')     AS failed,
-            count(*) FILTER (
-                WHERE description_at > now() - interval '5 minutes'
-            ) AS described_window,
-            extract(epoch FROM (
-                now() - min(description_at) FILTER (
-                    WHERE description_at > now() - interval '5 minutes'
-                )
-            )) AS window_span
+            count(*) FILTER (WHERE description_at IS NOT NULL) AS described_total,
+            extract(epoch FROM (now() - min(description_at))) AS window_span
         FROM omni.assets
         """
     ).fetchone()
@@ -64,12 +58,12 @@ def snapshot(conn: psycopg.Connection) -> dict[str, Any]:
     described = int(counts["described"])
     embedded = int(counts["embedded"])
     failed = int(counts["failed"])
-    described_window = int(counts["described_window"])
+    described_total = int(counts["described_total"])
     span = float(counts["window_span"] or 0)
 
-    # Throughput over the observed span (capped at 5 minutes), not a fixed
-    # window, so the estimate is meaningful right after startup.
-    rate_per_sec = described_window / max(span, 30.0) if described_window else 0.0
+    # Cumulative average since the first description: stable under the bursty
+    # latency of the shared remote vision model.
+    rate_per_sec = described_total / max(span, 60.0) if described_total else 0.0
     eta_seconds = pending / rate_per_sec if rate_per_sec > 0 and pending else None
 
     return {
@@ -78,7 +72,7 @@ def snapshot(conn: psycopg.Connection) -> dict[str, Any]:
         "described": described,
         "embedded": embedded,
         "failed": failed,
-        "described_window": described_window,
+        "described_total": described_total,
         "rate_per_min": round(rate_per_sec * 60, 2),
         "eta_seconds": int(eta_seconds) if eta_seconds else None,
         "paused": bool(state["paused"]) if state else False,

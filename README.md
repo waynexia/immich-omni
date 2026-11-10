@@ -135,7 +135,9 @@ docker compose run --rm pipeline status
 | 6 | 195.9 s |
 | 8 | **174.3 s** |
 
-远端 32B 模型基本是吞吐瓶颈，4/6/8 差别不大，最终取 **8**。新 prompt 不限制长度，单条描述约 390–440 字，稳定吞吐约 **2.7 张/分钟**，43k 张全量大约 **11 天**。worker 可以一直跑，随时在 Web 上暂停，或 `docker compose stop worker`；pending 队列会保留。
+隔离测试里 8 并发的单批最快，但持续跑时 8 并发会偶发连接重置（`model-gateway` 日志里的 `Broken pipe`，对应 analyzer 的 `error sending request`），所以 worker 默认用 **4** 并发；4/6/8 的单批差异本来也不大。
+
+新 prompt 不限制长度，单条描述约 200–450 字，当前远端模型的实际吞吐约 **1.5–2.5 张/分钟**，43k 张全量大致需要 **2–3 周**。worker 可以一直跑，随时在 Web 上暂停，或 `docker compose stop worker`；pending 队列会保留。
 
 如果觉得太慢，两个不改代码的选项：把 `THUMBNAIL_SIZE` 从 `preview` 改成 `thumbnail`（视觉 token 更少，OCR 质量会下降），或在 prompt 里加回长度上限。
 

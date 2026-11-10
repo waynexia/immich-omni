@@ -80,7 +80,7 @@ PAGE = """<!doctype html>
   </div>
 
   <div class="panel">
-    <div class="row"><span>最近 5 分钟描述速度</span><span id="rate">-</span></div>
+    <div class="row"><span>平均描述速度</span><span id="rate">-</span></div>
     <div class="row" style="margin-top:6px"><span>预计剩余时间</span><span id="eta">-</span></div>
   </div>
 </main>
