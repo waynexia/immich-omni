@@ -11,7 +11,9 @@ if [[ ! -d "$SRC" ]]; then
     git clone --depth 1 https://github.com/ggml-org/llama.cpp "$SRC"
 fi
 
-cmake -S "$SRC" -B "$SRC/build" \
+BUILD_DIR="${LLAMA_BUILD_DIR:-$SRC/build}"
+
+cmake -S "$SRC" -B "$BUILD_DIR" \
     -DGGML_HIP=ON \
     -DAMDGPU_TARGETS="$TARGET" \
     -DCMAKE_BUILD_TYPE=Release \
@@ -19,8 +21,9 @@ cmake -S "$SRC" -B "$SRC/build" \
     -DLLAMA_BUILD_TESTS=OFF \
     -DLLAMA_BUILD_EXAMPLES=OFF
 
-cmake --build "$SRC/build" -j "$(nproc)" --target llama-server
+cmake --build "$BUILD_DIR" -j "$(nproc)" --target llama-server
 
+rm -rf "$ROOT/docker/llama/bin"
 mkdir -p "$ROOT/docker/llama/bin"
-cp "$SRC/build/bin/llama-server" "$ROOT/docker/llama/bin/llama-server"
+cp -a "$BUILD_DIR/bin/." "$ROOT/docker/llama/bin/"
 echo "copied llama-server to docker/llama/bin/"

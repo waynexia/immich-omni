@@ -315,11 +315,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "init-db":
             return cmd_init_db(cfg)
         if args.command == "sync":
-            return cmd_sync(cfg, args.limit)
+            cmd_sync(cfg, args.limit)
+            return 0
         if args.command == "describe":
-            return cmd_describe(cfg, args.limit)
+            cmd_describe(cfg, args.limit)
+            return 0
         if args.command == "embed":
-            return cmd_embed(cfg, args.limit, args.batch)
+            cmd_embed(cfg, args.limit, args.batch)
+            return 0
         if args.command == "search":
             return cmd_search(cfg, args.query, args.limit, args.json)
         if args.command == "status":

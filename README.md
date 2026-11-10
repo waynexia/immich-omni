@@ -69,27 +69,34 @@ $EDITOR .env
 
 ```bash
 # 1. 构建 pipeline 镜像（内置打过补丁的 immich-analyze）
+#    需要 GitHub / crates.io 可达；.env 里的 BUILD_HTTP_PROXY 会在构建时生效
 make build
 
-# 2. 下载模型（可反复执行，断点续传；默认走 ModelScope，约 6-7 MB/s）
+# 2. 在宿主编译 llama-server（HIP/gfx1201），并打包成本地镜像
+#    需要 ROCm（hipcc）和 cmake；首次会 clone llama.cpp
+make llama
+
+# 3. 下载模型（可反复执行，断点续传；默认走 ModelScope，约 6-7 MB/s）
 make download
 
-# 3. 启动本地 embedding 服务
+# 4. 启动本地 embedding 服务
 make up
 docker compose logs -f llama-embed   # 等到 "server is listening"
 
-# 4. 初始化 omni schema
+# 5. 初始化 omni schema
 make init
 
-# 5. 小批量验证
+# 6. 小批量验证
 make sync LIMIT=200
 make describe LIMIT=5
 make embed LIMIT=5
 make search Q='陶笛'
 
-# 6. 全量（可随时 Ctrl-C，再执行同一条命令继续）
+# 7. 全量（可随时 Ctrl-C，再执行同一条命令继续）
 make run CHUNK=64
 ```
+
+> `make llama` 是唯一在宿主机上执行的编译步骤：这台机器的 ghcr.io 拉取不稳定，而宿主机已经有匹配的 ROCm 7.2 工具链。运行阶段仍然全部在 Docker 里。
 
 也可以用 compose 直接跑单步：
 

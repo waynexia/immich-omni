@@ -5,11 +5,12 @@
 # host. Build it with `make llama` (see scripts/build_llama.sh).
 FROM archlinux:latest
 
-RUN pacman -Sy --noconfirm --needed gcc-libs libgomp \
+RUN printf 'Server = https://mirrors.tuna.tsinghua.edu.cn/archlinux/$repo/os/$arch\n' > /etc/pacman.d/mirrorlist \
+    && pacman -Sy --noconfirm --needed gcc-libs libgomp fmt google-glog libdrm numactl elfutils zlib \
     && pacman -Scc --noconfirm
 
-COPY bin/llama-server /usr/local/bin/llama-server
+COPY bin/ /opt/llama/bin/
 
-ENV LD_LIBRARY_PATH=/opt/rocm/lib:/opt/rocm/lib/rocm_sysdeps/lib
+ENV LD_LIBRARY_PATH=/opt/llama/bin:/opt/rocm/lib:/opt/rocm/lib/rocm_sysdeps/lib
 
-ENTRYPOINT ["/usr/local/bin/llama-server"]
+ENTRYPOINT ["/opt/llama/bin/llama-server"]

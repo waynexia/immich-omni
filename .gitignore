@@ -4,6 +4,7 @@ models/*
 !models/.gitkeep
 work/*
 docker/llama/bin/
+docker/pipeline/bin/
 !work/.gitkeep
 *.log
 
