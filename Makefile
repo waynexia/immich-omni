@@ -36,7 +36,7 @@ init:
 	$(COMPOSE) run --rm pipeline init-db
 
 sync:
-	$(COMPOSE) run --rm pipeline sync
+	$(COMPOSE) run --rm pipeline sync $(if $(LIMIT),--limit $(LIMIT),)
 
 describe:
 	$(COMPOSE) run --rm pipeline describe --limit $(or $(LIMIT),128)
