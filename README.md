@@ -79,22 +79,34 @@ make llama
 # 3. 下载模型（可反复执行，断点续传；默认走 ModelScope，约 6-7 MB/s）
 make download
 
-# 4. 启动本地 embedding 服务和 Tailscale 网关
-make up
-docker compose logs -f llama-embed   # 等到 "server is listening"
-
-# 5. 初始化 omni schema
+# 4. 初始化 omni schema（必须先于 worker）
 make init
 
-# 6. 小批量验证
+# 5. 只起推理服务和 Tailscale 网关，先做小批量验证
+docker compose up -d llama-embed model-gateway
+docker compose logs -f llama-embed   # 等到 "server is listening"
+
 make sync LIMIT=200
 make describe LIMIT=5
 make embed LIMIT=5
 make search Q='陶笛'
 
-# 7. 全量（可随时 Ctrl-C，再执行同一条命令继续）
-make run CHUNK=64
+# 6. 启动常驻 worker + Web 控制台，开始全量
+make up
 ```
+
+> `make llama` 是唯一在宿主机上执行的编译步骤：这台机器的 ghcr.io 拉取不稳定，而宿主机已经有匹配的 ROCm 7.2 工具链。运行阶段仍然全部在 Docker 里。
+
+### Web 控制台
+
+`make up` 会同时启动 `worker` 和 `web`，浏览器打开 **http://<宿主机>:10313/**：
+
+- 描述进度、向量进度、待处理/失败计数；
+- 最近 15 分钟的描述速度、预计剩余时间；
+- **暂停 / 继续**：worker 在下一批开始前读取 `omni.control.paused`，暂停最多等当前 16 张跑完；
+- worker 心跳，超过 60 秒没更新会标红。
+
+控制台只读写 `omni.control`，没有鉴权，默认只适合内网使用；端口在 `compose.yaml` 的 `web.ports` 里改。
 
 > `make llama` 是唯一在宿主机上执行的编译步骤：这台机器的 ghcr.io 拉取不稳定，而宿主机已经有匹配的 ROCm 7.2 工具链。运行阶段仍然全部在 Docker 里。
 
@@ -115,7 +127,17 @@ docker compose run --rm pipeline status
 - 全部 16 条完成 1024 维 embedding；
 - 中文查询 `陶笛` 命中陶笛图（0.72），第二位是吉他音箱（0.43）；`深蓝色的陶笛` 命中同一张图（0.81）。
 
-全量 describe 的吞吐取决于远端 32B 模型的排队情况：单张大约 10–20 秒，`ANALYZE_CONCURRENCY=2` 时 43k 张约需 60–120 小时。`make run` 可以一直跑，随时 Ctrl-C，再执行同一条命令会从 pending 队列继续。
+并发实测（8 张图，同一批资产，全部成功）：
+
+| `ANALYZE_CONCURRENCY` | 耗时 |
+|---|---|
+| 4 | 188.8 s |
+| 6 | 195.9 s |
+| 8 | **174.3 s** |
+
+远端 32B 模型基本是吞吐瓶颈，4/6/8 差别不大，最终取 **8**。新 prompt 不限制长度，单条描述约 390–440 字，稳定吞吐约 **2.7 张/分钟**，43k 张全量大约 **11 天**。worker 可以一直跑，随时在 Web 上暂停，或 `docker compose stop worker`；pending 队列会保留。
+
+如果觉得太慢，两个不改代码的选项：把 `THUMBNAIL_SIZE` 从 `preview` 改成 `thumbnail`（视觉 token 更少，OCR 质量会下降），或在 prompt 里加回长度上限。
 
 ## 断点续跑
 
@@ -134,6 +156,8 @@ pending ──describe──▶ described ──embed──▶ embedded
   UPDATE omni.assets SET status='pending', attempts=0 WHERE status='failed';
   ```
 - `sync` 是幂等的 upsert，重复执行只更新文件名/时间等元数据，不会覆盖已有描述和向量。
+- `worker` 是常驻循环：先 sync，再按 `--batch 16` 跑 describe/embed，每处理一条更新心跳；暂停状态存在 `omni.control`，容器重启/换机都保留。
+- 手动单步命令和 `worker` 不要同时跑，会抢同一批 pending；需要单步时先 `docker compose stop worker`。
 
 ## 中文搜索
 
