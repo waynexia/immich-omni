@@ -3,6 +3,7 @@
 models/*
 !models/.gitkeep
 work/*
+docker/llama/bin/
 !work/.gitkeep
 *.log
 

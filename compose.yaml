@@ -3,7 +3,9 @@ name: immich-omni
 services:
   # Local embedding server: Qwen3-Embedding-8B Q8_0 on ROCm.
   llama-embed:
-    image: ghcr.io/ggml-org/llama.cpp:server-rocm
+    build:
+      context: docker/llama
+    image: immich-omni/llama-rocm:local
     container_name: immich_omni_llama
     restart: unless-stopped
     devices:
@@ -14,6 +16,7 @@ services:
       - "989" # render
     volumes:
       - ./models:/models:ro
+      - ${ROCM_PATH:-/opt/rocm}:/opt/rocm:ro
     command:
       - -m
       - /models/Qwen3-Embedding-8B-Q8_0.gguf

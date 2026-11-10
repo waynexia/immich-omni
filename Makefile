@@ -1,11 +1,12 @@
 SHELL := /bin/bash
 COMPOSE := docker compose
 
-.PHONY: help build download up down init sync describe embed search status run
+.PHONY: help build download llama up down init sync describe embed search status run
 
 help:
 	@echo "make build     build the pipeline image (needs BUILD_HTTP_PROXY)"
 	@echo "make download  download Qwen3-Embedding-8B Q8_0 (resumable)"
+	@echo "make llama     build llama-server on the host and the runtime image"
 	@echo "make up        start llama.cpp embedding server"
 	@echo "make init      create role/schema/tables in the Immich Postgres"
 	@echo "make sync      mirror asset metadata from the Immich API"
@@ -20,6 +21,10 @@ build:
 
 download:
 	$(COMPOSE) --profile setup run --rm model-download
+
+llama:
+	bash scripts/build_llama.sh
+	$(COMPOSE) build llama-embed
 
 up:
 	$(COMPOSE) up -d llama-embed

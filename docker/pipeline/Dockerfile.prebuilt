@@ -1,0 +1,20 @@
+# Fast iteration image: reuses the analyzer binary built on the host
+# (scripts/build_llama.sh builds llama.cpp, cargo builds immich-analyze).
+# The reproducible, from-source image is docker/pipeline/Dockerfile.
+FROM python:3.12-slim
+
+COPY docker/pipeline/bin/immich-analyze /usr/local/bin/immich-analyze
+
+WORKDIR /app
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -i "$PIP_INDEX_URL" -r requirements.txt
+
+COPY src/ ./src/
+COPY sql/ ./sql/
+
+ENV PYTHONPATH=/app/src \
+    PYTHONUNBUFFERED=1
+
+ENTRYPOINT ["python", "-m", "immich_omni"]
+CMD ["status"]
