@@ -1,0 +1,97 @@
+name: immich-omni
+
+services:
+  # Local embedding server: Qwen3-Embedding-8B Q8_0 on ROCm.
+  llama-embed:
+    image: ghcr.io/ggml-org/llama.cpp:server-rocm
+    container_name: immich_omni_llama
+    restart: unless-stopped
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - "985" # video
+      - "989" # render
+    volumes:
+      - ./models:/models:ro
+    command:
+      - -m
+      - /models/Qwen3-Embedding-8B-Q8_0.gguf
+      - --embeddings
+      - --pooling
+      - last
+      - -c
+      - "8192"
+      - -b
+      - "8192"
+      - -ub
+      - "2048"
+      - -ngl
+      - "99"
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+    networks:
+      - omni
+
+  # One-shot worker. Every command is idempotent and resumable.
+  pipeline:
+    build:
+      context: .
+      dockerfile: docker/pipeline/Dockerfile
+      network: host
+      args:
+        HTTP_PROXY: ${BUILD_HTTP_PROXY:-}
+        HTTPS_PROXY: ${BUILD_HTTP_PROXY:-}
+    image: immich-omni/pipeline:local
+    container_name: immich_omni_pipeline
+    env_file:
+      - .env
+    extra_hosts:
+      # Docker bridge containers cannot route to Tailscale; model-gateway
+      # forwards the TLS endpoint through the host network namespace.
+      - "${DESCRIBE_HOST_NAME:-mbp-dpsk.tailc4cf9.ts.net}:host-gateway"
+    volumes:
+      - ./models:/models:ro
+      - ./work:/work
+    networks:
+      - omni
+      - immich
+    depends_on:
+      - llama-embed
+
+  # TCP forwarder from the Docker bridge to the Tailscale-only vision model.
+  # TLS/SNI is preserved because clients still use the original hostname.
+  model-gateway:
+    image: alpine/socat
+    container_name: immich_omni_model_gateway
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - TCP-LISTEN:18081,fork,reuseaddr
+      - TCP:${DESCRIBE_HOST_IP:-100.92.101.43}:443
+
+  # Resumable model downloader, run with:
+  #   docker compose --profile setup run --rm model-download
+  model-download:
+    image: python:3.12-slim
+    profiles:
+      - setup
+    network_mode: host
+    volumes:
+      - ./models:/models
+      - ./scripts:/scripts:ro
+    command:
+      - python
+      - /scripts/download_model.py
+      - --output
+      - /models/Qwen3-Embedding-8B-Q8_0.gguf
+      - --connections
+      - "8"
+
+networks:
+  omni: {}
+  immich:
+    external: true
+    name: immich_default
