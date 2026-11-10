@@ -1,0 +1,12 @@
+# local state
+.env
+models/*
+!models/.gitkeep
+work/
+*.log
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
