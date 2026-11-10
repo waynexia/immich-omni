@@ -2,7 +2,8 @@
 .env
 models/*
 !models/.gitkeep
-work/
+work/*
+!work/.gitkeep
 *.log
 
 # python
