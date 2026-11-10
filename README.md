@@ -111,8 +111,8 @@ docker compose run --rm pipeline status
 在 43,842 张图片的库上：
 
 - `sync` 全量镜像 43,842 条元数据；
-- 抽样 14 张图片完成 `describe`（中文描述，含 OCR 文字）；
-- 全部 14 条完成 1024 维 embedding；
+- 抽样 16 张图片完成 `describe`（中文描述，含 OCR 文字）；
+- 全部 16 条完成 1024 维 embedding；
 - 中文查询 `陶笛` 命中陶笛图（0.72），第二位是吉他音箱（0.43）；`深蓝色的陶笛` 命中同一张图（0.81）。
 
 全量 describe 的吞吐取决于远端 32B 模型的排队情况：单张大约 10–20 秒，`ANALYZE_CONCURRENCY=2` 时 43k 张约需 60–120 小时。`make run` 可以一直跑，随时 Ctrl-C，再执行同一条命令会从 pending 队列继续。
