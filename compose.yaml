@@ -63,6 +63,7 @@ services:
       - immich
     depends_on:
       - llama-embed
+      - model-gateway
 
   # TCP forwarder from the Docker bridge to the Tailscale-only vision model.
   # TLS/SNI is preserved because clients still use the original hostname.

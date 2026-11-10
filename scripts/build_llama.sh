@@ -11,17 +11,22 @@ if [[ ! -d "$SRC" ]]; then
     git clone --depth 1 https://github.com/ggml-org/llama.cpp "$SRC"
 fi
 
-BUILD_DIR="${LLAMA_BUILD_DIR:-$SRC/build}"
+BUILD_DIR="${LLAMA_BUILD_DIR:-$SRC/build-hip}"
 
-cmake -S "$SRC" -B "$BUILD_DIR" \
+# The distro clang and the ROCm clang must not be mixed: HIP headers from
+# /opt/rocm expect the libdevice declarations shipped with the ROCm LLVM.
+HIP_PATH="${HIP_PATH:-/opt/rocm}"
+PATH="$HIP_PATH/bin:$PATH" cmake -S "$SRC" -B "$BUILD_DIR" \
     -DGGML_HIP=ON \
     -DAMDGPU_TARGETS="$TARGET" \
+    -DCMAKE_HIP_COMPILER="$HIP_PATH/lib/llvm/bin/clang++" \
+    -DCMAKE_HIP_FLAGS="--hip-path=$HIP_PATH" \
     -DCMAKE_BUILD_TYPE=Release \
     -DLLAMA_CURL=OFF \
     -DLLAMA_BUILD_TESTS=OFF \
     -DLLAMA_BUILD_EXAMPLES=OFF
 
-cmake --build "$BUILD_DIR" -j "$(nproc)" --target llama-server
+PATH="$HIP_PATH/bin:$PATH" cmake --build "$BUILD_DIR" -j "$(nproc)" --target llama-server
 
 rm -rf "$ROOT/docker/llama/bin"
 mkdir -p "$ROOT/docker/llama/bin"
