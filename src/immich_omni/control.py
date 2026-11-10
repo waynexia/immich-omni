@@ -91,3 +91,15 @@ def snapshot(conn: psycopg.Connection) -> dict[str, Any]:
             and state["worker_age"] < 60
         ),
     }
+
+
+def retry_failed(conn: psycopg.Connection) -> int:
+    result = conn.execute(
+        """
+        UPDATE omni.assets
+        SET status = 'pending', attempts = 0, last_error = NULL, updated_at = now()
+        WHERE status = 'failed'
+        """
+    )
+    conn.commit()
+    return result.rowcount or 0

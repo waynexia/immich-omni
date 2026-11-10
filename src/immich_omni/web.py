@@ -67,6 +67,7 @@ PAGE = """<!doctype html>
     <div style="margin-top:16px; display:flex; gap:10px;">
       <button id="pause" class="danger">暂停</button>
       <button id="resume" class="primary">继续</button>
+      <button id="retry">重试失败</button>
     </div>
     <div id="err"></div>
   </div>
@@ -143,6 +144,15 @@ async function toggle(action) {
 
 $('pause').onclick = () => toggle('pause');
 $('resume').onclick = () => toggle('resume');
+$('retry').onclick = async () => {
+  try {
+    const r = await fetch('/api/retry', {method: 'POST'});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    $('err').textContent = `已重置 ${d.retried} 条失败任务`;
+    await refresh();
+  } catch (e) { $('err').textContent = e.message; }
+};
 refresh();
 setInterval(refresh, 2000);
 </script>
@@ -190,6 +200,10 @@ class Handler(BaseHTTPRequestHandler):
                 with db.connect(self.cfg) as conn:
                     control.set_paused(conn, False)
                 self._json(200, {"paused": False})
+            elif self.path == "/api/retry":
+                with db.connect(self.cfg) as conn:
+                    retried = control.retry_failed(conn)
+                self._json(200, {"retried": retried})
             else:
                 self._json(404, {"error": "not found"})
         except Exception as error:  # noqa: BLE001
