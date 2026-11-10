@@ -1,10 +1,9 @@
-# syntax=docker/dockerfile:1.7
 
 # immich-analyze v0.6.1 with the small patch in docker/immich-analyze/patches:
 #   * --jsonl        stream one JSON object per asset
 #   * --assets-file  only process the given asset ids (resume support)
 #   * --no-writeback never write descriptions back to Immich
-FROM rust:1.91-alpine AS analyzer
+FROM rust:1.99-alpine AS analyzer
 
 ARG HTTP_PROXY=""
 ARG HTTPS_PROXY=""

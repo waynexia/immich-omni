@@ -79,7 +79,7 @@ make llama
 # 3. 下载模型（可反复执行，断点续传；默认走 ModelScope，约 6-7 MB/s）
 make download
 
-# 4. 启动本地 embedding 服务
+# 4. 启动本地 embedding 服务和 Tailscale 网关
 make up
 docker compose logs -f llama-embed   # 等到 "server is listening"
 
@@ -105,6 +105,17 @@ docker compose run --rm pipeline describe --limit 32
 docker compose run --rm pipeline embed --limit 256
 docker compose run --rm pipeline status
 ```
+
+## 已验证的结果
+
+在 43,842 张图片的库上：
+
+- `sync` 全量镜像 43,842 条元数据；
+- 抽样 14 张图片完成 `describe`（中文描述，含 OCR 文字）；
+- 全部 14 条完成 1024 维 embedding；
+- 中文查询 `陶笛` 命中陶笛图（0.72），第二位是吉他音箱（0.43）；`深蓝色的陶笛` 命中同一张图（0.81）。
+
+全量 describe 的吞吐取决于远端 32B 模型的排队情况：单张大约 10–20 秒，`ANALYZE_CONCURRENCY=2` 时 43k 张约需 60–120 小时。`make run` 可以一直跑，随时 Ctrl-C，再执行同一条命令会从 pending 队列继续。
 
 ## 断点续跑
 

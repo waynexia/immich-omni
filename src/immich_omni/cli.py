@@ -303,7 +303,7 @@ def build_parser() -> argparse.ArgumentParser:
     run = sub.add_parser("run", help="sync + describe + embed until no pending assets")
     run.add_argument("--chunk", type=int, default=64)
     run.add_argument("--sync-limit", type=int, default=None)
-    run.add_argument("--max-rounds", type=int, default=10)
+    run.add_argument("--max-rounds", type=int, default=1000)
 
     return parser
 

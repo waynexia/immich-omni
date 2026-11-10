@@ -17,7 +17,7 @@ help:
 	@echo "make search Q='陶笛'"
 
 build:
-	$(COMPOSE) build
+	$(COMPOSE) build pipeline
 
 download:
 	$(COMPOSE) --profile setup run --rm model-download
@@ -27,7 +27,7 @@ llama:
 	$(COMPOSE) build llama-embed
 
 up:
-	$(COMPOSE) up -d llama-embed
+	$(COMPOSE) up -d llama-embed model-gateway
 
 down:
 	$(COMPOSE) down
@@ -45,7 +45,7 @@ embed:
 	$(COMPOSE) run --rm pipeline embed --limit $(or $(LIMIT),2048)
 
 run:
-	$(COMPOSE) run --rm pipeline run --chunk $(or $(CHUNK),64)
+	$(COMPOSE) run --rm pipeline run --chunk $(or $(CHUNK),64) --max-rounds $(or $(ROUNDS),1000)
 
 status:
 	$(COMPOSE) run --rm pipeline status
