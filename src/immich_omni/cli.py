@@ -9,7 +9,7 @@ from typing import Any
 
 from psycopg import sql
 
-from . import analyzer, control, db, llama
+from . import analyzer, control, db, describer, llama
 from .config import Config
 from .immich import ImmichClient
 
@@ -280,15 +280,31 @@ def cmd_run(cfg: Config, chunk: int, sync_limit: int | None, max_rounds: int) ->
     return 0
 
 
+def cmd_describe_http(
+    cfg: Config, limit: int, prefetch: int, stop_flag: threading.Event | None = None
+) -> int:
+    import asyncio
+
+    ok, _failed = asyncio.run(describer.run(cfg, limit, prefetch, stop_flag))
+    return ok
+
+
 def cmd_worker(
-    cfg: Config, batch: int, embed_batch: int, sync_interval: int
+    cfg: Config,
+    batch: int,
+    embed_batch: int,
+    sync_interval: int,
+    engine: str,
+    prefetch: int,
 ) -> int:
     """Long-running describe/embed loop controlled by ``omni.control``."""
     stop = False
+    stop_flag = threading.Event()
 
     def _stop(signum: int, _frame: object) -> None:
         nonlocal stop
         stop = True
+        stop_flag.set()
         print(f"signal {signum} received, stopping after the current batch", flush=True)
 
     signal.signal(signal.SIGTERM, _stop)
@@ -310,8 +326,9 @@ def cmd_worker(
     threading.Thread(target=_heartbeat, daemon=True).start()
 
     print(
-        f"worker started: batch={batch} embed_batch={embed_batch} "
-        f"concurrency={cfg.max_concurrent} sync_interval={sync_interval}s",
+        f"worker started: engine={engine} batch={batch} prefetch={prefetch} "
+        f"embed_batch={embed_batch} concurrency={cfg.max_concurrent} "
+        f"sync_interval={sync_interval}s",
         flush=True,
     )
     last_sync = 0.0
@@ -327,7 +344,10 @@ def cmd_worker(
                 cmd_sync(cfg)
                 last_sync = time.time()
                 continue
-            described = cmd_describe(cfg, batch)
+            if engine == "http":
+                described = cmd_describe_http(cfg, batch, prefetch, stop_flag)
+            else:
+                described = cmd_describe(cfg, batch)
             cmd_embed(cfg, embed_batch, batch_size=8)
             if described == 0:
                 time.sleep(5)
@@ -381,6 +401,17 @@ def build_parser() -> argparse.ArgumentParser:
     worker.add_argument("--batch", type=int, default=16)
     worker.add_argument("--embed-batch", type=int, default=32)
     worker.add_argument("--sync-interval", type=int, default=1800)
+    worker.add_argument(
+        "--engine", choices=["http", "analyze"], default="http",
+        help="http: built-in prefetch client; analyze: patched immich-analyze"
+    )
+    worker.add_argument("--prefetch", type=int, default=32)
+
+    describe_http = sub.add_parser(
+        "describe-http", help="describe a chunk with the prefetch client"
+    )
+    describe_http.add_argument("--limit", type=int, default=32)
+    describe_http.add_argument("--prefetch", type=int, default=32)
 
     sub.add_parser("web", help="serve the progress and pause/resume UI")
 
@@ -400,6 +431,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "describe":
             cmd_describe(cfg, args.limit)
             return 0
+        if args.command == "describe-http":
+            cmd_describe_http(cfg, args.limit, args.prefetch)
+            return 0
         if args.command == "embed":
             cmd_embed(cfg, args.limit, args.batch)
             return 0
@@ -410,7 +444,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "run":
             return cmd_run(cfg, args.chunk, args.sync_limit, args.max_rounds)
         if args.command == "worker":
-            return cmd_worker(cfg, args.batch, args.embed_batch, args.sync_interval)
+            return cmd_worker(
+                cfg,
+                args.batch,
+                args.embed_batch,
+                args.sync_interval,
+                args.engine,
+                args.prefetch,
+            )
         if args.command == "web":
             return cmd_web(cfg)
     except KeyboardInterrupt:

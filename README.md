@@ -103,7 +103,7 @@ make up
 
 - 描述进度、向量进度、待处理/失败计数；
 - 最近 15 分钟的描述速度、预计剩余时间；
-- **暂停 / 继续**：worker 在下一批开始前读取 `omni.control.paused`，暂停最多等当前 16 张跑完；
+- **暂停 / 继续**：worker 在每次模型请求前读取 `omni.control.paused`，暂停最多等当前 4 个在途请求（约 1 个请求时长）跑完；
 - worker 心跳，超过 60 秒没更新会标红。
 
 控制台只读写 `omni.control`，没有鉴权，默认只适合内网使用；端口在 `compose.yaml` 的 `web.ports` 里改。
@@ -127,17 +127,19 @@ docker compose run --rm pipeline status
 - 全部 16 条完成 1024 维 embedding；
 - 中文查询 `陶笛` 命中陶笛图（0.72），第二位是吉他音箱（0.43）；`深蓝色的陶笛` 命中同一张图（0.81）。
 
-并发实测（8 张图，同一批资产，全部成功）：
+预取基准（8 张图，缩略图全部先下载完再计时，排除 Immich 往返）：
 
-| `ANALYZE_CONCURRENCY` | 耗时 |
-|---|---|
-| 4 | 188.8 s |
-| 6 | 195.9 s |
-| 8 | **174.3 s** |
+| 并发 | 耗时 | 吞吐 | 单请求平均 |
+|---|---|---|---|
+| 4 | 156.9 s | **3.1 张/分钟** | 70 s |
+| 8 | 152.6 s | 3.1 张/分钟 | 145 s |
+| 12 | 156.4 s | 3.1 张/分钟 | 147 s |
 
-隔离测试里 8 并发的单批最快，但持续跑时 8 并发会偶发连接重置（`model-gateway` 日志里的 `Broken pipe`，对应 analyzer 的 `error sending request`），所以 worker 默认用 **4** 并发；4/6/8 的单批差异本来也不大。
+结论：远端 32B 模型本身在 **3.1 张/分钟** 饱和，并发 8/12 不会提高吞吐，只会把单请求延迟翻倍，所以 worker 用 **4 并发**。
 
-新 prompt 不限制长度，单条描述约 200–450 字，当前远端模型的实际吞吐约 **1.5–2.5 张/分钟**，43k 张全量大致需要 **2–3 周**。worker 可以一直跑，随时在 Web 上暂停，或 `docker compose stop worker`；pending 队列会保留。
+原先 worker 每批 8 张串行 `describe → embed`，实测约 2.8 张/分钟；换成 `--engine http` 的内置客户端（缩略图预取 + 4 个模型 worker + 描述完成即入库）后达到 **3.1 张/分钟**，基本吃满模型容量。`--engine analyze` 仍然保留，用于回退到打过补丁的 immich-analyze。
+
+新 prompt 不限制长度，单条描述约 200–450 字，43k 张全量大致需要 **2–3 周**。worker 可以一直跑，随时在 Web 上暂停，或 `docker compose stop worker`；pending 队列会保留。
 
 如果觉得太慢，两个不改代码的选项：把 `THUMBNAIL_SIZE` 从 `preview` 改成 `thumbnail`（视觉 token 更少，OCR 质量会下降），或在 prompt 里加回长度上限。
 
@@ -151,7 +153,7 @@ pending ──describe──▶ described ──embed──▶ embedded
    └──── 失败 attempts<3 ───┘
 ```
 
-- `describe` 每次只捞 `status='pending' AND attempts<3` 的资产，把 id 写到 `/work/assets-*.txt`，交给 immich-analyze；每收到一行 JSON 就单独 commit。中途 kill 最多丢掉正在处理的那几条，重跑会重新排队。
+- `describe`/`describe-http` 每次只捞 `status='pending' AND attempts<3` 的资产；`--engine http`（默认）用内置预取客户端，`--engine analyze` 把 id 写到 `/work/assets-*.txt` 交给 immich-analyze。描述完成一条就 commit，中断最多丢在途的几条，重跑会重新排队。
 - `embed` 只处理 `status='described' AND embedding IS NULL`，批量提交。
 - 连续失败 3 次的资产会变成 `failed`，不再阻塞队列；排查后可以手工重置：
   ```sql

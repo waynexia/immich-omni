@@ -72,7 +72,7 @@ services:
   worker:
     <<: *pipeline
     container_name: immich_omni_worker
-    command: ["worker", "--batch", "8"]
+    command: ["worker", "--batch", "32", "--prefetch", "32", "--engine", "http"]
     restart: unless-stopped
     stop_grace_period: 5m
 
