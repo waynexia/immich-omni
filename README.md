@@ -160,10 +160,33 @@ pending ──describe──▶ described ──embed──▶ embedded
   UPDATE omni.assets SET status='pending', attempts=0 WHERE status='failed';
   ```
 - `sync` 是幂等的 upsert，重复执行只更新文件名/时间等元数据，不会覆盖已有描述和向量。
-- `worker` 是常驻循环：先 sync，再按 `--batch 16` 跑 describe/embed，每处理一条更新心跳；暂停状态存在 `omni.control`，容器重启/换机都保留。
+- `worker` 是常驻循环：先 sync，再按 `--batch 32` 跑 describe/embed，每处理一条更新心跳；暂停状态存在 `omni.control`，容器重启/换机都保留。
 - 手动单步命令和 `worker` 不要同时跑，会抢同一批 pending；需要单步时先 `docker compose stop worker`。
 
 ## 中文搜索
+
+Web 控制台的 **搜索** tab 是完整的检索流程：
+
+1. 用 Qwen3-Embedding-8B 编码查询（带 `QUERY_INSTRUCTION`），在 `omni.assets.embedding` 上做 1024 维余弦检索；
+2. 同时调用 Immich `POST /api/search/smart`，拿它自带 CLIP 的排序；
+3. 两个排名用 **RRF** 融合：`score = w_qwen/(k+rank_qwen) + w_clip/(k+rank_clip)`，默认 `k=60`、`w_qwen=2.0`、`w_clip=1.0`（CLIP 对中文查询噪声较大，所以描述向量权重更高；改 `.env` 的 `RRF_QWEN_WEIGHT` / `RRF_CLIP_WEIGHT` 可调）；
+4. **没有描述 embedding 的图片**不进入 Qwen 排名，在融合中该路贡献 0，但仍可能通过 CLIP 进入结果；
+5. 结果页只加载 Immich `thumbnail`（缩略图，WebP），点击卡片才请求 `/api/original/{id}`。
+
+CLIP 调用失败时搜索会降级为纯 Qwen 结果，页面会标注 `CLIP 失败`。
+
+> 原图接口需要 API key 带 `asset.download`；当前 key 没有这个权限，所以点击后会自动回退到 1920px 的 `preview`（响应头 `X-Immich-Fallback: preview-permission`）。HEIC 原图浏览器也不能直接显示，同样回退 preview。想要真正的原图，在 Immich → API Keys 里给 key 补上 `asset.download`。
+
+搜索接口也可以直接用：
+
+```bash
+curl 'http://127.0.0.1:10313/api/search?q=%E9%99%B6%E7%AC%9B&limit=10'
+```
+
+返回 `results`（含 `qwen_rank` / `clip_rank` / RRF `score`）和两路耗时。
+
+## 中文搜索（命令行）
+
 
 ```bash
 make search Q='深蓝色陶瓷乐器'

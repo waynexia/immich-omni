@@ -54,6 +54,8 @@ class Config:
     max_concurrent: int
     timeout: int
     query_instruction: str
+    rrf_qwen_weight: float
+    rrf_clip_weight: float
 
     @classmethod
     def from_env(cls) -> Config:
@@ -88,6 +90,8 @@ class Config:
             query_instruction=_env(
                 "QUERY_INSTRUCTION", DEFAULT_QUERY_INSTRUCTION
             ),
+            rrf_qwen_weight=float(_env("RRF_QWEN_WEIGHT", "2.0")),
+            rrf_clip_weight=float(_env("RRF_CLIP_WEIGHT", "1.0")),
         )
 
     @property
