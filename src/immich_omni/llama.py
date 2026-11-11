@@ -15,10 +15,12 @@ def normalize(values: list[float], dim: int) -> list[float]:
     return [value / norm for value in truncated]
 
 
-def embed(cfg: Config, texts: list[str]) -> list[list[float]]:
+def embed(
+    cfg: Config, texts: list[str], timeout: float | None = None
+) -> list[list[float]]:
     if not texts:
         return []
-    with httpx.Client(timeout=cfg.timeout) as client:
+    with httpx.Client(timeout=timeout or cfg.timeout) as client:
         response = client.post(
             f"{cfg.llama_url}/v1/embeddings",
             json={"model": cfg.llama_model, "input": texts},

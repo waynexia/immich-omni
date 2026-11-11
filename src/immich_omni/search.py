@@ -21,7 +21,7 @@ class Hit:
 
 
 def _qwen_ranked(cfg: Config, query: str, limit: int) -> list[dict]:
-    vector = llama.embed(cfg, [llama.query_text(cfg, query)])[0]
+    vector = llama.embed(cfg, [llama.query_text(cfg, query)], timeout=30.0)[0]
     literal = db.vector_literal(vector)
     with db.connect(cfg) as conn:
         return conn.execute(
