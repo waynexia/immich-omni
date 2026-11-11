@@ -134,7 +134,7 @@ PAGE = """<!doctype html>
       <input id="search-q" type="search" placeholder="描述你想找的画面，例如：雨天的城市街道" autocomplete="off">
       <button class="primary" type="submit">搜索</button>
     </form>
-    <div id="search-meta" class="sub">描述向量 + Immich CLIP，RRF 融合</div>
+    <div id="search-meta" class="sub">描述向量 + Immich CLIP(DB)，RRF 融合</div>
     <div id="results" class="grid"></div>
   </section>
 </main>
@@ -227,9 +227,10 @@ document.querySelectorAll('.tab').forEach((tab) => {
 });
 
 function rankText(item) {
-  const qwen = item.qwen_rank ? `描述 #${item.qwen_rank}` :
-    '无描述向量';
-  const clip = item.clip_rank ? `CLIP #${item.clip_rank}` : 'CLIP —';
+  const qs = item.qwen_similarity != null ? ` ${item.qwen_similarity.toFixed(3)}` : '';
+  const cs = item.clip_similarity != null ? ` ${item.clip_similarity.toFixed(3)}` : '';
+  const qwen = item.qwen_rank ? `描述 #${item.qwen_rank}${qs}` : '无描述向量';
+  const clip = item.clip_rank ? `CLIP #${item.clip_rank}${cs}` : 'CLIP —';
   return `RRF ${item.score.toFixed(4)} · ${qwen} · ${clip}`;
 }
 
@@ -261,10 +262,11 @@ function renderResults(data) {
   const grid = $('results');
   grid.replaceChildren(...data.results.map(makeCard));
   const t = data.timings;
-  const clipNote = data.clip_error ? ` · CLIP 失败: ${data.clip_error}` : '';
+  const clipNote = data.clip_source === 'db' ? '' :
+    ` · CLIP 来源: ${data.clip_source}${data.clip_error ? ' (' + data.clip_error + ')' : ''}`;
   $('search-meta').textContent =
     `${data.results.length} 条结果 · 描述向量 ${t.qwen_ms.toFixed(0)}ms · ` +
-    `Immich CLIP ${t.clip_ms.toFixed(0)}ms · 融合 ${t.total_ms.toFixed(0)}ms · ` +
+    `CLIP(DB) ${t.clip_ms.toFixed(0)}ms · 融合 ${t.total_ms.toFixed(0)}ms · ` +
     `权重 ${data.weights.qwen}:${data.weights.clip}` + clipNote;
 }
 

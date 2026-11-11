@@ -44,6 +44,8 @@ class Config:
     pg_password: str
     llama_url: str
     llama_model: str
+    machine_learning_url: str
+    clip_probes: int
     embed_dim: int
     describe_host: str
     describe_model: str
@@ -74,6 +76,10 @@ class Config:
             pg_password=_env("OMNI_DB_PASSWORD", required=True),
             llama_url=_env("LLAMA_URL", "http://llama-embed:8080").rstrip("/"),
             llama_model=_env("LLAMA_MODEL", "qwen3-embedding-8b"),
+            machine_learning_url=_env(
+                "MACHINE_LEARNING_URL", "http://immich_machine_learning:3003"
+            ).rstrip("/"),
+            clip_probes=_int_env("CLIP_PROBES", 1),
             embed_dim=_int_env("EMBED_DIM", 1024),
             describe_host=_env(
                 "DESCRIBE_HOST", "https://mbp-dpsk.tailc4cf9.ts.net"

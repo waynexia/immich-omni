@@ -168,10 +168,12 @@ pending ──describe──▶ described ──embed──▶ embedded
 Web 控制台的 **搜索** tab 是完整的检索流程：
 
 1. 用 Qwen3-Embedding-8B 编码查询（带 `QUERY_INSTRUCTION`），在 `omni.assets.embedding` 上做 1024 维余弦检索；
-2. 同时调用 Immich `POST /api/search/smart`，拿它自带 CLIP 的排序；
-3. 两个排名用 **RRF** 融合：`score = w_qwen/(k+rank_qwen) + w_clip/(k+rank_clip)`，默认 `k=60`、`w_qwen=2.0`、`w_clip=1.0`（CLIP 对中文查询噪声较大，所以描述向量权重更高；改 `.env` 的 `RRF_QWEN_WEIGHT` / `RRF_CLIP_WEIGHT` 可调）；
+2. 用 Immich ML 的 `/predict` 编码查询（模型从 `system-config` 读取，当前是 `nllb-clip-large-siglip__mrl`，1152 维），**直接查 `smart_search.embedding <=> $vec`** 拿原始余弦相似度；按 `deletedAt`/`visibility` 过滤，查询前 `SET LOCAL vchordrq.probes=1`；ML 或 DB 失败时回退 `POST /api/search/smart`；
+3. 两路各取 200 个候选，用 **RRF** 融合：`score = w_qwen/(k+rank_qwen) + w_clip/(k+rank_clip)`，默认 `k=60`、`w_qwen=2.0`、`w_clip=1.0`（CLIP 对中文查询噪声较大，所以描述向量权重更高；改 `.env` 的 `RRF_QWEN_WEIGHT` / `RRF_CLIP_WEIGHT` 可调）；
 4. **没有描述 embedding 的图片**不进入 Qwen 排名，在融合中该路贡献 0，但仍可能通过 CLIP 进入结果；
 5. 结果页只加载 Immich `thumbnail`（缩略图，WebP），点击卡片才请求 `/api/original/{id}`。
+
+> RRF 本身是 rank-based；直连 DB 的价值是拿到 raw cosine、200 个候选和可控过滤。`qwen_similarity` / `clip_similarity` 会一并返回，并作为 RRF 同分时的 tie-break。
 
 CLIP 调用失败时搜索会降级为纯 Qwen 结果，页面会标注 `CLIP 失败`。
 
